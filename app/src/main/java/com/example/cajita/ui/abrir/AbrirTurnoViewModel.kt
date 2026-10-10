@@ -28,17 +28,34 @@ class AbrirTurnoViewModel(application: Application) : AndroidViewModel(applicati
     val conteos: StateFlow<Map<Int, Pair<Int, Int>>> = _conteos.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            repository.ultimoCajeroFlow.collect { ultimo ->
-                if (ultimo.isNotBlank()) {
-                    _nombre.value = ultimo
-                }
-            }
-        }
         val conteoInicialDefault = Denominaciones.LISTA.associate { item ->
             item.valor to Pair(0, 0)
         }
         _conteos.value = conteoInicialDefault
+
+        viewModelScope.launch {
+            repository.ultimoCajeroFlow.collect { ultimo ->
+                if (ultimo.isNotBlank() && _nombre.value.isBlank()) {
+                    _nombre.value = ultimo
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            cargarConteosCierreAnterior()
+            repository.sincronizarDesdeSupabase()
+            cargarConteosCierreAnterior()
+        }
+    }
+
+    private suspend fun cargarConteosCierreAnterior() {
+        val conteosAnteriores = repository.getConteosDelUltimoCierre()
+        if (conteosAnteriores.isNotEmpty()) {
+            val actualTotal = calcularTotalContado(_conteos.value)
+            if (actualTotal == 0L) {
+                _conteos.value = conteosAnteriores
+            }
+        }
     }
 
     fun onNombreChanged(nuevo: String) {

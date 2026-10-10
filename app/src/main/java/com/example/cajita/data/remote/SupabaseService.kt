@@ -151,6 +151,25 @@ class SupabaseService {
         }
     }
 
+    suspend fun fetchTurnoById(id: String): TurnoSupabaseDto? {
+        if (!isConfigured()) return null
+        return try {
+            val response = client.get("$supabaseUrl/rest/v1/turnos?id=eq.$id&limit=1") {
+                headers {
+                    append("apikey", supabaseKey)
+                    append(HttpHeaders.Authorization, "Bearer $supabaseKey")
+                }
+            }
+            if (response.status == HttpStatusCode.OK) {
+                val list = json.decodeFromString<List<TurnoSupabaseDto>>(response.bodyAsText())
+                list.firstOrNull()
+            } else null
+        } catch (e: Exception) {
+            Log.e("SupabaseService", "Error in fetchTurnoById", e)
+            null
+        }
+    }
+
     suspend fun fetchTurnoAbierto(): TurnoSupabaseDto? {
         if (!isConfigured()) return null
         return try {

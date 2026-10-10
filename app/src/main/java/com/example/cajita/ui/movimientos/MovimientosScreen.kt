@@ -19,8 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
@@ -231,7 +229,6 @@ fun MovimientosScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // ÍCONO TIPO / MEDIO
                                     val (bgColor, iconChar, tagLabel, tagBg, isPositive) = when (item) {
                                         is MovimientoItem.Venta -> {
                                             when (item.venta.medio) {
@@ -261,7 +258,6 @@ fun MovimientosScreen(
 
                                     Spacer(modifier = Modifier.width(12.dp))
 
-                                    // TÍTULO Y DETALLE
                                     Column(modifier = Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             val titulo = when (item) {
@@ -303,7 +299,6 @@ fun MovimientosScreen(
 
                                         Spacer(modifier = Modifier.height(2.dp))
 
-                                        // SUBTÍTULO DETALLE
                                         val detalleTexto = when (item) {
                                             is MovimientoItem.Venta -> {
                                                 val v = item.venta
@@ -316,7 +311,11 @@ fun MovimientosScreen(
                                             }
                                             is MovimientoItem.Egreso -> {
                                                 val e = item.egreso
-                                                val deDonde = if (e.origen == "CAJITA") "De la cajita" else "De la caja"
+                                                val deDonde = when (e.origen) {
+                                                    "CAJITA" -> "De la cajita"
+                                                    "MIXTO" -> "De caja y cajita"
+                                                    else -> "De la caja"
+                                                }
                                                 val prov = if (!e.proveedor.isNullOrBlank()) "${e.proveedor} · " else ""
                                                 "$prov$deDonde"
                                             }
@@ -329,7 +328,6 @@ fun MovimientosScreen(
                                         )
                                     }
 
-                                    // MONTO Y HORA
                                     Column(horizontalAlignment = Alignment.End) {
                                         val montoStr = when (item) {
                                             is MovimientoItem.Venta -> item.venta.totalVenta.toFormatoMonedaARS()
@@ -352,7 +350,6 @@ fun MovimientosScreen(
                                     }
                                 }
 
-                                // BOTONES EDITAR / BORRAR SI ESTÁ EXPANDIDO
                                 if (estaExpandido) {
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Row(
@@ -444,12 +441,13 @@ fun MovimientosScreen(
             proveedoresRecientes = proveedoresRecientes,
             egresoAEditar = egresoAEditar,
             onDismiss = { egresoAEditar = null },
-            onRegistrarEgreso = { tipo, origen, billetes, proveedor, nota ->
+            onRegistrarEgreso = { tipo, origen, bCaja, tCajita, proveedor, nota ->
                 viewModel.editarEgreso(
                     egresoActual = egresoAEditar!!,
                     nuevoTipo = tipo,
                     nuevoOrigen = origen,
-                    nuevosBilletes = billetes,
+                    nuevosBilletesCaja = bCaja,
+                    nuevosToquitosCajita = tCajita,
                     nuevoProveedor = proveedor,
                     nuevaNota = nota
                 )

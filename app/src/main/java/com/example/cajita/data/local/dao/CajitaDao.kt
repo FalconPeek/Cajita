@@ -197,6 +197,9 @@ interface CajitaDao {
     suspend fun getUltimoCierre(): CierreLocal?
 
     @Query("SELECT * FROM cierres WHERE id = :id LIMIT 1")
+    fun getCierreByIdFlow(id: String): Flow<CierreLocal?>
+
+    @Query("SELECT * FROM cierres WHERE id = :id LIMIT 1")
     suspend fun getCierreById(id: String): CierreLocal?
 
     @Query("SELECT * FROM cierres WHERE turnoId = :turnoId LIMIT 1")

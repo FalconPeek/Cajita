@@ -8,16 +8,16 @@ import kotlinx.serialization.json.JsonObject
 data class TurnoSupabaseDto(
     val id: String,
     @SerialName("dispositivo_id")
-    val dispositivoId: String,
-    val cajero: String?,
+    val dispositivoId: String? = null,
+    val cajero: String? = null,
     @SerialName("abierto_en")
     val abiertoEn: String,
     @SerialName("monto_apertura_declarado")
-    val montoAperturaDeclarado: Long,
+    val montoAperturaDeclarado: Long = 0,
     @SerialName("billetes_apertura")
-    val billetesApertura: JsonObject,
+    val billetesApertura: JsonObject = JsonObject(emptyMap()),
     @SerialName("toquitos_apertura")
-    val toquitosApertura: JsonObject
+    val toquitosApertura: JsonObject = JsonObject(emptyMap())
 )
 
 @Serializable
@@ -55,9 +55,9 @@ data class VentaSupabaseDto(
     @SerialName("efectivo_salida")
     val efectivoSalida: Long,
     @SerialName("billetes_entrada")
-    val billetesEntrada: JsonObject,
+    val billetesEntrada: JsonObject = JsonObject(emptyMap()),
     @SerialName("billetes_salida")
-    val billetesSalida: JsonObject,
+    val billetesSalida: JsonObject = JsonObject(emptyMap()),
     val nota: String? = null
 )
 
@@ -77,7 +77,7 @@ data class EgresoSupabaseDto(
     val tipo: String,
     val origen: String,
     val monto: Long,
-    val billetes: JsonObject,
+    val billetes: JsonObject = JsonObject(emptyMap()),
     val proveedor: String? = null,
     val nota: String? = null
 )
@@ -90,18 +90,18 @@ data class CierreSupabaseDto(
     @SerialName("cerrado_en")
     val cerradoEn: String,
     @SerialName("billetes_caja")
-    val billetesCaja: JsonObject,
+    val billetesCaja: JsonObject = JsonObject(emptyMap()),
     @SerialName("toquitos_cajita")
-    val toquitosCajita: JsonObject,
+    val toquitosCajita: JsonObject = JsonObject(emptyMap()),
     @SerialName("total_caja")
-    val totalCaja: Long,
+    val totalCaja: Long = 0,
     @SerialName("total_cajita")
-    val totalCajita: Long,
+    val totalCajita: Long = 0,
     @SerialName("total_contado")
-    val totalContado: Long,
+    val totalContado: Long = 0,
     @SerialName("total_posberry")
-    val totalPosberry: Long,
-    val diferencia: Long,
+    val totalPosberry: Long = 0,
+    val diferencia: Long = 0,
     val nota: String? = null,
     @SerialName("digital_cargado")
     val digitalCargado: JsonObject? = null,

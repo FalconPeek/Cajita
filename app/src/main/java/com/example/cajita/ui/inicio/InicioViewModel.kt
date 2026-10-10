@@ -32,10 +32,12 @@ class InicioViewModel(application: Application) : AndroidViewModel(application) 
     private val _cajeroUltimoCierre = MutableStateFlow<String?>(null)
     val cajeroUltimoCierre: StateFlow<String?> = _cajeroUltimoCierre.asStateFlow()
 
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
     init {
-        viewModelScope.launch {
-            repository.sincronizarDesdeSupabase()
-        }
+        sincronizarConSupabase()
+
         viewModelScope.launch {
             ultimoCierre.collect { cierre ->
                 if (cierre != null) {
@@ -44,6 +46,19 @@ class InicioViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     _cajeroUltimoCierre.value = null
                 }
+            }
+        }
+    }
+
+    fun sincronizarConSupabase() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            try {
+                repository.sincronizarDesdeSupabase()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isSyncing.value = false
             }
         }
     }

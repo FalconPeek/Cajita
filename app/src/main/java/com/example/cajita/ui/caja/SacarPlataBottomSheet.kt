@@ -34,13 +34,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.cajita.data.local.entity.ProveedorLocal
 import com.example.cajita.domain.model.Denominaciones
+import com.example.cajita.domain.model.VentaLogic
 import com.example.cajita.domain.model.toFormatoMonedaARS
 import com.example.cajita.ui.components.DenominationChip
 import com.example.cajita.ui.theme.DarkError
@@ -55,9 +55,10 @@ fun SacarPlataBottomSheet(
     egresoAEditar: com.example.cajita.data.local.entity.EgresoLocal? = null,
     onDismiss: () -> Unit,
     onRegistrarEgreso: (
-        tipo: String, // "RETIRO", "PROVEEDOR"
-        origen: String, // "CAJA", "CAJITA"
-        billetes: Map<Int, Int>,
+        tipo: String,
+        origen: String,
+        billetesCaja: Map<Int, Int>,
+        toquitosCajita: Map<Int, Int>,
         proveedor: String?,
         nota: String?
     ) -> Unit
@@ -71,8 +72,8 @@ fun SacarPlataBottomSheet(
         mutableStateOf(egresoAEditar?.tipo ?: "PROVEEDOR")
     }
 
-    var origenSeleccionado by remember {
-        mutableStateOf(egresoAEditar?.origen ?: "CAJA")
+    var tabActivo by remember {
+        mutableStateOf(if (egresoAEditar?.origen == "CAJITA") "CAJITA" else "CAJA")
     }
 
     var proveedorTexto by remember {
@@ -83,18 +84,31 @@ fun SacarPlataBottomSheet(
         mutableStateOf(egresoAEditar?.nota ?: "")
     }
 
-    val billetesSeleccionados = remember {
-        mutableStateMapOf<Int, Int>().apply {
-            if (egresoAEditar != null) {
-                putAll(com.example.cajita.domain.model.VentaLogic.jsonStringToMap(egresoAEditar.billetes))
-            }
+    val (cajaInicial, cajitaInicial) = remember(egresoAEditar) {
+        if (egresoAEditar != null) {
+            VentaLogic.parseEgresoJsonString(egresoAEditar.billetes, egresoAEditar.origen)
+        } else {
+            Pair(emptyMap(), emptyMap())
         }
     }
 
-    val factorToquito = if (origenSeleccionado == "CAJITA") 10L else 1L
-    val montoTotalLong = billetesSeleccionados.entries.sumOf { (denom, cant) ->
-        if (cant > 0) cant.toLong() * denom.toLong() * factorToquito else 0L
+    val billetesCajaSeleccionados = remember {
+        mutableStateMapOf<Int, Int>().apply { putAll(cajaInicial) }
     }
+
+    val toquitosCajitaSeleccionados = remember {
+        mutableStateMapOf<Int, Int>().apply { putAll(cajitaInicial) }
+    }
+
+    val montoCajaLong = billetesCajaSeleccionados.entries.sumOf { (denom, cant) ->
+        if (cant > 0) cant.toLong() * denom.toLong() else 0L
+    }
+
+    val montoCajitaLong = toquitosCajitaSeleccionados.entries.sumOf { (denom, cant) ->
+        if (cant > 0) cant.toLong() * denom.toLong() * 10L else 0L
+    }
+
+    val montoTotalLong = montoCajaLong + montoCajitaLong
 
     var errorMensaje by remember { mutableStateOf<String?>(null) }
 
@@ -121,7 +135,6 @@ fun SacarPlataBottomSheet(
                 modifier = Modifier.weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Selector Retiro / Pago a proveedor
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -253,7 +266,7 @@ fun SacarPlataBottomSheet(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val esCaja = origenSeleccionado == "CAJA"
+                            val esCaja = tabActivo == "CAJA"
 
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
@@ -264,14 +277,12 @@ fun SacarPlataBottomSheet(
                                 ),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clickable {
-                                        origenSeleccionado = "CAJA"
-                                        billetesSeleccionados.clear()
-                                    }
+                                    .clickable { tabActivo = "CAJA" }
                             ) {
+                                val tieneCaja = billetesCajaSeleccionados.any { it.value > 0 }
                                 Text(
-                                    text = "Caja",
-                                    fontSize = 14.sp,
+                                    text = if (tieneCaja) "Caja (${montoCajaLong.toFormatoMonedaARS()})" else "Caja",
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(vertical = 10.dp)
@@ -287,14 +298,12 @@ fun SacarPlataBottomSheet(
                                 ),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clickable {
-                                        origenSeleccionado = "CAJITA"
-                                        billetesSeleccionados.clear()
-                                    }
+                                    .clickable { tabActivo = "CAJITA" }
                             ) {
+                                val tieneCajita = toquitosCajitaSeleccionados.any { it.value > 0 }
                                 Text(
-                                    text = "Cajita (toquitos)",
-                                    fontSize = 14.sp,
+                                    text = if (tieneCajita) "Cajita (${montoCajitaLong.toFormatoMonedaARS()})" else "Cajita (toquitos)",
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(vertical = 10.dp)
@@ -304,11 +313,12 @@ fun SacarPlataBottomSheet(
                     }
                 }
 
-                // Grid de billetes/toquitos que salen
+                // Grid de billetes/toquitos que salen según la pestaña activa
                 item {
                     Column {
+                        val esCajaTab = tabActivo == "CAJA"
                         Text(
-                            text = if (origenSeleccionado == "CAJITA") "TOQUITOS QUE SALEN" else "BILLETES QUE SALEN",
+                            text = if (esCajaTab) "BILLETES QUE SALEN (CAJA)" else "TOQUITOS QUE SALEN (CAJITA)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -319,6 +329,9 @@ fun SacarPlataBottomSheet(
                         val denoms = Denominaciones.LISTA.take(8).map { it.valor }
                         val filas = denoms.chunked(4)
 
+                        val mapaTarget = if (esCajaTab) billetesCajaSeleccionados else toquitosCajitaSeleccionados
+                        val mapaDisponible = if (esCajaTab) cajaBilletes else cajitaToquitos
+
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             for (fila in filas) {
                                 Row(
@@ -326,7 +339,7 @@ fun SacarPlataBottomSheet(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     for (denom in fila) {
-                                        val cantidad = billetesSeleccionados[denom] ?: 0
+                                        val cantidad = mapaTarget[denom] ?: 0
                                         val tieneValor = cantidad > 0
 
                                         Surface(
@@ -341,17 +354,18 @@ fun SacarPlataBottomSheet(
                                                 .height(44.dp)
                                                 .combinedClickable(
                                                     onClick = {
-                                                        val disp = if (origenSeleccionado == "CAJITA") (cajitaToquitos[denom] ?: 0) else (cajaBilletes[denom] ?: 0)
+                                                        val disp = mapaDisponible[denom] ?: 0
                                                         if (cantidad + 1 <= disp) {
-                                                            billetesSeleccionados[denom] = cantidad + 1
+                                                            mapaTarget[denom] = cantidad + 1
                                                             errorMensaje = null
                                                         } else {
-                                                            errorMensaje = "No hay suficientes de $ $denom"
+                                                            val unidad = if (esCajaTab) "billetes" else "toquitos"
+                                                            errorMensaje = "No hay suficientes $unidad de $ $denom"
                                                         }
                                                     },
                                                     onLongClick = {
                                                         val cant = cantidad - 1
-                                                        if (cant <= 0) billetesSeleccionados.remove(denom) else billetesSeleccionados[denom] = cant
+                                                        if (cant <= 0) mapaTarget.remove(denom) else mapaTarget[denom] = cant
                                                         errorMensaje = null
                                                     }
                                                 )
@@ -365,9 +379,14 @@ fun SacarPlataBottomSheet(
                                             ) {
                                                 DenominationChip(denominacion = denom, modifier = Modifier.scale(0.85f))
 
+                                                val labelCant = when {
+                                                    cantidad > 0 -> if (esCajaTab) "-$cantidad" else "-$cantidad toq."
+                                                    else -> "·"
+                                                }
+
                                                 Text(
-                                                    text = if (cantidad > 0) "-$cantidad" else "·",
-                                                    fontSize = 12.sp,
+                                                    text = labelCant,
+                                                    fontSize = 11.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = if (tieneValor) errorColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                                 )
@@ -418,9 +437,15 @@ fun SacarPlataBottomSheet(
                     .fillMaxWidth()
                     .padding(vertical = 8.dp)
             ) {
+                val textoDetalleSalida = when {
+                    montoCajaLong > 0 && montoCajitaLong > 0 -> "− Sale de caja: ${montoCajaLong.toFormatoMonedaARS()} + cajita: ${montoCajitaLong.toFormatoMonedaARS()} = ${montoTotalLong.toFormatoMonedaARS()}"
+                    montoCajitaLong > 0 -> "− Sale de la cajita: ${montoCajitaLong.toFormatoMonedaARS()}"
+                    else -> "− Sale de la caja: ${montoCajaLong.toFormatoMonedaARS()}"
+                }
+
                 Text(
-                    text = "− Sale de la ${origenSeleccionado.lowercase()}: ${montoTotalLong.toFormatoMonedaARS()}",
-                    fontSize = 15.sp,
+                    text = textoDetalleSalida,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = errorColor,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
@@ -432,10 +457,16 @@ fun SacarPlataBottomSheet(
             Button(
                 onClick = {
                     if (botonValido) {
+                        val origenReal = when {
+                            montoCajaLong > 0 && montoCajitaLong > 0 -> "MIXTO"
+                            montoCajitaLong > 0 -> "CAJITA"
+                            else -> "CAJA"
+                        }
                         onRegistrarEgreso(
                             tipoSeleccionado,
-                            origenSeleccionado,
-                            billetesSeleccionados.toMap(),
+                            origenReal,
+                            billetesCajaSeleccionados.toMap(),
+                            toquitosCajitaSeleccionados.toMap(),
                             proveedorTexto.ifBlank { null },
                             notaTexto.ifBlank { null }
                         )

@@ -54,7 +54,7 @@ class MovimientosViewModel(application: Application) : AndroidViewModel(applicat
         initialValue = emptyList()
     )
 
-    private val _filtroSeleccionado = MutableStateFlow("Todos") // "Todos", "Efectivo", "Digital", "Salidas"
+    private val _filtroSeleccionado = MutableStateFlow("Todos")
     val filtroSeleccionado: StateFlow<String> = _filtroSeleccionado.asStateFlow()
 
     private val ventasActivas = turnoAbierto.flatMapLatest { turno ->
@@ -175,7 +175,8 @@ class MovimientosViewModel(application: Application) : AndroidViewModel(applicat
         egresoActual: EgresoLocal,
         nuevoTipo: String,
         nuevoOrigen: String,
-        nuevosBilletes: Map<Int, Int>,
+        nuevosBilletesCaja: Map<Int, Int>,
+        nuevosToquitosCajita: Map<Int, Int>,
         nuevoProveedor: String?,
         nuevaNota: String?
     ) {
@@ -184,7 +185,8 @@ class MovimientosViewModel(application: Application) : AndroidViewModel(applicat
                 egresoActual = egresoActual,
                 nuevoTipo = nuevoTipo,
                 nuevoOrigen = nuevoOrigen,
-                nuevosBilletes = nuevosBilletes,
+                nuevosBilletesCaja = nuevosBilletesCaja,
+                nuevosToquitosCajita = nuevosToquitosCajita,
                 nuevoProveedor = nuevoProveedor,
                 nuevaNota = nuevaNota
             )

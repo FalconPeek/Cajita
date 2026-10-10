@@ -29,135 +29,155 @@ object Sincronizador {
             // 1. Sync Turnos
             val turnosPendientes = dao.getTurnosPendientesApertura()
             for (turno in turnosPendientes) {
-                sincronizarTurno(turno.id, dao, supabaseService, dispositivoId)
+                try {
+                    sincronizarTurno(turno.id, dao, supabaseService, dispositivoId)
+                } catch (e: Exception) {
+                    Log.e("Sincronizador", "Error sincronizando turno ${turno.id}", e)
+                }
             }
 
             // 2. Sync Movimientos
             val movimientosPendientes = dao.getMovimientosNoSincronizados()
             for (mov in movimientosPendientes) {
-                if (!asegurarTurnoSincronizado(mov.turnoId, dao, supabaseService, dispositivoId)) continue
+                try {
+                    if (!asegurarTurnoSincronizado(mov.turnoId, dao, supabaseService, dispositivoId)) continue
 
-                val dto = MovimientoSupabaseDto(
-                    id = mov.id,
-                    turnoId = mov.turnoId,
-                    ocurridoEn = formatIsoInstant(mov.ocurridoEn),
-                    tipo = mov.tipo,
-                    denominacion = mov.denominacion,
-                    cantidad = mov.cantidad
-                )
+                    val dto = MovimientoSupabaseDto(
+                        id = mov.id,
+                        turnoId = mov.turnoId,
+                        ocurridoEn = formatIsoInstant(mov.ocurridoEn),
+                        tipo = mov.tipo,
+                        denominacion = mov.denominacion,
+                        cantidad = mov.cantidad
+                    )
 
-                if (supabaseService.insertMovimiento(dto)) {
-                    dao.marcarMovimientoSincronizado(mov.id)
+                    if (supabaseService.insertMovimiento(dto)) {
+                        dao.marcarMovimientoSincronizado(mov.id)
+                    }
+                } catch (e: Exception) {
+                    Log.e("Sincronizador", "Error sincronizando movimiento ${mov.id}", e)
                 }
             }
 
             // 3. Sync Ventas
             val ventasPendientes = dao.getVentasNoSincronizadas()
             for (venta in ventasPendientes) {
-                if (!asegurarTurnoSincronizado(venta.turnoId, dao, supabaseService, dispositivoId)) continue
+                try {
+                    if (!asegurarTurnoSincronizado(venta.turnoId, dao, supabaseService, dispositivoId)) continue
 
-                val dto = VentaSupabaseDto(
-                    id = venta.id,
-                    ventaId = venta.ventaId,
-                    version = venta.version,
-                    turnoId = venta.turnoId,
-                    ocurridoEn = formatIsoInstant(venta.ocurridoEn),
-                    registradoEn = formatIsoInstant(venta.registradoEn),
-                    eliminada = venta.eliminada,
-                    medio = venta.medio,
-                    totalVenta = venta.totalVenta,
-                    montoDigital = venta.montoDigital,
-                    efectivoEntrada = venta.efectivoEntrada,
-                    efectivoSalida = venta.efectivoSalida,
-                    billetesEntrada = stringMapToJsonObject(venta.billetesEntrada),
-                    billetesSalida = stringMapToJsonObject(venta.billetesSalida),
-                    nota = venta.nota
-                )
+                    val dto = VentaSupabaseDto(
+                        id = venta.id,
+                        ventaId = venta.ventaId,
+                        version = venta.version,
+                        turnoId = venta.turnoId,
+                        ocurridoEn = formatIsoInstant(venta.ocurridoEn),
+                        registradoEn = formatIsoInstant(venta.registradoEn),
+                        eliminada = venta.eliminada,
+                        medio = venta.medio,
+                        totalVenta = venta.totalVenta,
+                        montoDigital = venta.montoDigital,
+                        efectivoEntrada = venta.efectivoEntrada,
+                        efectivoSalida = venta.efectivoSalida,
+                        billetesEntrada = stringMapToJsonObject(venta.billetesEntrada),
+                        billetesSalida = stringMapToJsonObject(venta.billetesSalida),
+                        nota = venta.nota
+                    )
 
-                if (supabaseService.insertVenta(dto)) {
-                    dao.marcarVentaSincronizada(venta.id)
+                    if (supabaseService.insertVenta(dto)) {
+                        dao.marcarVentaSincronizada(venta.id)
+                    }
+                } catch (e: Exception) {
+                    Log.e("Sincronizador", "Error sincronizando venta ${venta.id}", e)
                 }
             }
 
             // 4. Sync Egresos
             val egresosPendientes = dao.getEgresosNoSincronizados()
             for (egreso in egresosPendientes) {
-                if (!asegurarTurnoSincronizado(egreso.turnoId, dao, supabaseService, dispositivoId)) continue
+                try {
+                    if (!asegurarTurnoSincronizado(egreso.turnoId, dao, supabaseService, dispositivoId)) continue
 
-                val dto = EgresoSupabaseDto(
-                    id = egreso.id,
-                    egresoId = egreso.egresoId,
-                    version = egreso.version,
-                    turnoId = egreso.turnoId,
-                    ocurridoEn = formatIsoInstant(egreso.ocurridoEn),
-                    registradoEn = formatIsoInstant(egreso.registradoEn),
-                    eliminado = egreso.eliminado,
-                    tipo = egreso.tipo,
-                    origen = egreso.origen,
-                    monto = egreso.monto,
-                    billetes = stringMapToJsonObject(egreso.billetes),
-                    proveedor = egreso.proveedor,
-                    nota = egreso.nota
-                )
+                    val dto = EgresoSupabaseDto(
+                        id = egreso.id,
+                        egresoId = egreso.egresoId,
+                        version = egreso.version,
+                        turnoId = egreso.turnoId,
+                        ocurridoEn = formatIsoInstant(egreso.ocurridoEn),
+                        registradoEn = formatIsoInstant(egreso.registradoEn),
+                        eliminado = egreso.eliminado,
+                        tipo = egreso.tipo,
+                        origen = egreso.origen,
+                        monto = egreso.monto,
+                        billetes = stringMapToJsonObject(egreso.billetes),
+                        proveedor = egreso.proveedor,
+                        nota = egreso.nota
+                    )
 
-                if (supabaseService.insertEgreso(dto)) {
-                    dao.marcarEgresoSincronizado(egreso.id)
+                    if (supabaseService.insertEgreso(dto)) {
+                        dao.marcarEgresoSincronizado(egreso.id)
+                    }
+                } catch (e: Exception) {
+                    Log.e("Sincronizador", "Error sincronizando egreso ${egreso.id}", e)
                 }
             }
 
             // 5. Sync Cierres
             val cierresPendientes = dao.getCierresNoSincronizados()
             for (cierre in cierresPendientes) {
-                if (!asegurarTurnoSincronizado(cierre.turnoId, dao, supabaseService, dispositivoId)) continue
+                try {
+                    if (!asegurarTurnoSincronizado(cierre.turnoId, dao, supabaseService, dispositivoId)) continue
 
-                val conteos = dao.getConteos(cierre.turnoId)
-                val billetesMap = mutableMapOf<String, JsonPrimitive>()
-                val toquitosMap = mutableMapOf<String, JsonPrimitive>()
-                var totalCaja = 0L
-                var totalCajita = 0L
+                    val conteos = dao.getConteos(cierre.turnoId)
+                    val billetesMap = mutableMapOf<String, JsonPrimitive>()
+                    val toquitosMap = mutableMapOf<String, JsonPrimitive>()
+                    var totalCaja = 0L
+                    var totalCajita = 0L
 
-                for (c in conteos) {
-                    if (c.billetesCaja > 0) {
-                        billetesMap[c.denominacion.toString()] = JsonPrimitive(c.billetesCaja)
-                        totalCaja += c.billetesCaja.toLong() * c.denominacion.toLong()
+                    for (c in conteos) {
+                        if (c.billetesCaja > 0) {
+                            billetesMap[c.denominacion.toString()] = JsonPrimitive(c.billetesCaja)
+                            totalCaja += c.billetesCaja.toLong() * c.denominacion.toLong()
+                        }
+                        if (c.toquitosCajita > 0) {
+                            toquitosMap[c.denominacion.toString()] = JsonPrimitive(c.toquitosCajita)
+                            totalCajita += c.toquitosCajita.toLong() * 10L * c.denominacion.toLong()
+                        }
                     }
-                    if (c.toquitosCajita > 0) {
-                        toquitosMap[c.denominacion.toString()] = JsonPrimitive(c.toquitosCajita)
-                        totalCajita += c.toquitosCajita.toLong() * 10L * c.denominacion.toLong()
+
+                    val totalContado = totalCaja + totalCajita
+                    val diferencia = totalContado - cierre.totalPosberry
+
+                    val dto = CierreSupabaseDto(
+                        id = cierre.id,
+                        turnoId = cierre.turnoId,
+                        cerradoEn = formatIsoInstant(cierre.cerradoEn),
+                        billetesCaja = JsonObject(billetesMap),
+                        toquitosCajita = JsonObject(toquitosMap),
+                        totalCaja = totalCaja,
+                        totalCajita = totalCajita,
+                        totalContado = totalContado,
+                        totalPosberry = cierre.totalPosberry,
+                        diferencia = diferencia,
+                        nota = cierre.nota,
+                        digitalCargado = stringMapToJsonObjectRaw(cierre.digitalCargado),
+                        digitalEditado = stringMapToJsonObjectRaw(cierre.digitalEditado),
+                        ventasDigitalesCargadas = cierre.ventasDigitalesCargadas,
+                        ventasDigitales = cierre.ventasDigitales,
+                        totalDigitalCargado = cierre.totalDigitalCargado,
+                        totalDigital = cierre.totalDigital,
+                        diferenciaDigital = cierre.diferenciaDigital,
+                        ventasEfectivo = cierre.ventasEfectivo,
+                        totalVentasEfectivo = cierre.totalVentasEfectivo,
+                        totalRetiros = cierre.totalRetiros,
+                        totalProveedores = cierre.totalProveedores
+                    )
+
+                    if (supabaseService.insertCierre(dto)) {
+                        dao.marcarCierreSincronizado(cierre.id)
+                        dao.marcarTurnoCierreSincronizado(cierre.turnoId)
                     }
-                }
-
-                val totalContado = totalCaja + totalCajita
-                val diferencia = totalContado - cierre.totalPosberry
-
-                val dto = CierreSupabaseDto(
-                    id = cierre.id,
-                    turnoId = cierre.turnoId,
-                    cerradoEn = formatIsoInstant(cierre.cerradoEn),
-                    billetesCaja = JsonObject(billetesMap),
-                    toquitosCajita = JsonObject(toquitosMap),
-                    totalCaja = totalCaja,
-                    totalCajita = totalCajita,
-                    totalContado = totalContado,
-                    totalPosberry = cierre.totalPosberry,
-                    diferencia = diferencia,
-                    nota = cierre.nota,
-                    digitalCargado = stringMapToJsonObjectRaw(cierre.digitalCargado),
-                    digitalEditado = stringMapToJsonObjectRaw(cierre.digitalEditado),
-                    ventasDigitalesCargadas = cierre.ventasDigitalesCargadas,
-                    ventasDigitales = cierre.ventasDigitales,
-                    totalDigitalCargado = cierre.totalDigitalCargado,
-                    totalDigital = cierre.totalDigital,
-                    diferenciaDigital = cierre.diferenciaDigital,
-                    ventasEfectivo = cierre.ventasEfectivo,
-                    totalVentasEfectivo = cierre.totalVentasEfectivo,
-                    totalRetiros = cierre.totalRetiros,
-                    totalProveedores = cierre.totalProveedores
-                )
-
-                if (supabaseService.insertCierre(dto)) {
-                    dao.marcarCierreSincronizado(cierre.id)
-                    dao.marcarTurnoCierreSincronizado(cierre.turnoId)
+                } catch (e: Exception) {
+                    Log.e("Sincronizador", "Error sincronizando cierre ${cierre.id}", e)
                 }
             }
             true

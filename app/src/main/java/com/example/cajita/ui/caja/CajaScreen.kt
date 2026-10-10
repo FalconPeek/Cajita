@@ -93,7 +93,6 @@ fun CajaScreen(
     val (totalCaja, totalCajita, totalGeneral) = viewModel.calcularTotales()
     val totalToquitos = viewModel.calcularTotalToquitosCount()
 
-    // Cálculo de ventas digitales
     val ventasDigitalesList = ventasActivas.filter { it.medio != MedioPago.EFECTIVO }
     val cantidadVentasDigitales = ventasDigitalesList.size
     val totalMontoDigital = ventasDigitalesList.sumOf { it.montoDigital }
@@ -577,8 +576,8 @@ fun CajaScreen(
             cajitaToquitos = cajitaMap,
             proveedoresRecientes = proveedoresRecientes,
             onDismiss = { mostrarSacarPlataSheet = false },
-            onRegistrarEgreso = { tipo, origen, billetes, proveedor, nota ->
-                viewModel.guardarNuevoEgreso(tipo, origen, billetes, proveedor, nota)
+            onRegistrarEgreso = { tipo, origen, bCaja, tCajita, proveedor, nota ->
+                viewModel.guardarNuevoEgreso(tipo, origen, bCaja, tCajita, proveedor, nota)
             }
         )
     }

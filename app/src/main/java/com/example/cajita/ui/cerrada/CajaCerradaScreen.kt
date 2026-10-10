@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.cajita.domain.model.SyncStatus
 import com.example.cajita.domain.model.toFormatoMonedaARS
 import com.example.cajita.ui.components.SyncStatusChip
 import com.example.cajita.ui.inicio.CheckIconCanvas
@@ -187,15 +188,17 @@ fun CajaCerradaScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                if (syncStatus is SyncStatus.SinConexion) {
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Text(
-                    text = "Está guardado en el teléfono. Se envía solo cuando vuelva la conexión.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
+                    Text(
+                        text = "Está guardado en el teléfono. Se envía solo cuando vuelva la conexión.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
             }
 
             Button(

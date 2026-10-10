@@ -3,14 +3,17 @@ package com.example.cajita.data.worker
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.cajita.data.local.db.CajitaDatabase
 import com.example.cajita.data.preferences.UserPreferencesRepository
 import com.example.cajita.data.remote.SupabaseService
+import java.util.concurrent.TimeUnit
 
 class SyncWorker(
     appContext: Context,
@@ -48,6 +51,22 @@ class SyncWorker(
                 "CajitaSyncWork",
                 ExistingWorkPolicy.REPLACE,
                 syncWorkRequest
+            )
+        }
+
+        fun enqueuePeriodic(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val periodicWorkRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(constraints)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "CajitaPeriodicSyncWork",
+                ExistingPeriodicWorkPolicy.KEEP,
+                periodicWorkRequest
             )
         }
     }

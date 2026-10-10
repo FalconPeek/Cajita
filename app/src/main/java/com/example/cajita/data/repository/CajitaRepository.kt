@@ -11,11 +11,15 @@ import com.example.cajita.data.local.entity.ProveedorLocal
 import com.example.cajita.data.local.entity.TurnoLocal
 import com.example.cajita.data.local.entity.VentaLocal
 import com.example.cajita.data.preferences.UserPreferencesRepository
+import com.example.cajita.data.remote.SupabaseService
+import com.example.cajita.data.worker.Sincronizador
 import com.example.cajita.data.worker.SyncWorker
 import com.example.cajita.domain.model.Denominaciones
 import com.example.cajita.domain.model.VentaLogic
-import com.example.cajita.data.remote.SupabaseService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.util.UUID
 
@@ -25,6 +29,10 @@ class CajitaRepository(private val context: Context) {
     private val dao = db.cajitaDao()
     private val userPrefs = UserPreferencesRepository(context)
     private val supabaseService = SupabaseService()
+
+    init {
+        SyncWorker.enqueuePeriodic(context)
+    }
 
     val turnoAbiertoFlow: Flow<TurnoLocal?> = dao.getTurnoAbiertoFlow()
     val ultimoCierreFlow: Flow<CierreLocal?> = dao.getUltimoCierreFlow()
@@ -59,6 +67,10 @@ class CajitaRepository(private val context: Context) {
         userPrefs.saveUltimoCajero(nombre)
     }
 
+    fun getCierreByIdFlow(id: String): Flow<CierreLocal?> {
+        return dao.getCierreByIdFlow(id)
+    }
+
     suspend fun getCierreById(id: String): CierreLocal? {
         return dao.getCierreById(id)
     }
@@ -79,56 +91,72 @@ class CajitaRepository(private val context: Context) {
         try {
             val ultimoCierreDto = supabaseService.fetchUltimoCierre()
             if (ultimoCierreDto != null) {
-                val localExistente = dao.getCierreById(ultimoCierreDto.id)
-                if (localExistente == null) {
-                    val cerradoEnMillis = try {
-                        Instant.parse(ultimoCierreDto.cerradoEn).toEpochMilli()
-                    } catch (_: Exception) {
-                        System.currentTimeMillis()
-                    }
-
-                    var turnoLocal = dao.getTurnoById(ultimoCierreDto.turnoId)
-                    if (turnoLocal == null) {
-                        turnoLocal = TurnoLocal(
-                            id = ultimoCierreDto.turnoId,
-                            cajero = null,
-                            abiertoEn = cerradoEnMillis - 28800000L,
-                            montoAperturaDeclarado = ultimoCierreDto.totalPosberry,
-                            estado = "CERRADO",
-                            sincronizadoApertura = true,
-                            sincronizadoCierre = true
-                        )
-                        dao.insertTurno(turnoLocal)
-                    }
-
-                    val cierreLocal = CierreLocal(
-                        id = ultimoCierreDto.id,
-                        turnoId = ultimoCierreDto.turnoId,
-                        cerradoEn = cerradoEnMillis,
-                        totalPosberry = ultimoCierreDto.totalPosberry,
-                        nota = ultimoCierreDto.nota,
-                        sincronizado = true
-                    )
-
-                    val conteosLocal = Denominaciones.LISTA.map { item ->
-                        val key = item.valor.toString()
-                        val billetes = ultimoCierreDto.billetesCaja[key]?.let {
-                            it.toString().toIntOrNull() ?: 0
-                        } ?: 0
-                        val toquitos = ultimoCierreDto.toquitosCajita[key]?.let {
-                            it.toString().toIntOrNull() ?: 0
-                        } ?: 0
-                        ConteoLocal(
-                            turnoId = ultimoCierreDto.turnoId,
-                            denominacion = item.valor,
-                            billetesCaja = billetes,
-                            toquitosCajita = toquitos
-                        )
-                    }
-
-                    dao.insertCierre(cierreLocal)
-                    dao.insertConteos(conteosLocal)
+                val cerradoEnMillis = try {
+                    Instant.parse(ultimoCierreDto.cerradoEn).toEpochMilli()
+                } catch (_: Exception) {
+                    System.currentTimeMillis()
                 }
+
+                var turnoLocal = dao.getTurnoById(ultimoCierreDto.turnoId)
+                if (turnoLocal == null) {
+                    val remoteTurno = supabaseService.fetchTurnoById(ultimoCierreDto.turnoId)
+                    turnoLocal = TurnoLocal(
+                        id = ultimoCierreDto.turnoId,
+                        cajero = remoteTurno?.cajero,
+                        abiertoEn = remoteTurno?.abiertoEn?.let {
+                            try { Instant.parse(it).toEpochMilli() } catch (_: Exception) { cerradoEnMillis - 28800000L }
+                        } ?: (cerradoEnMillis - 28800000L),
+                        montoAperturaDeclarado = remoteTurno?.montoAperturaDeclarado ?: ultimoCierreDto.totalPosberry,
+                        estado = "CERRADO",
+                        sincronizadoApertura = true,
+                        sincronizadoCierre = true
+                    )
+                    dao.insertTurno(turnoLocal)
+                } else if (turnoLocal.cajero.isNullOrBlank()) {
+                    val remoteTurno = supabaseService.fetchTurnoById(ultimoCierreDto.turnoId)
+                    if (!remoteTurno?.cajero.isNullOrBlank()) {
+                        dao.updateTurno(turnoLocal.copy(cajero = remoteTurno.cajero))
+                    }
+                }
+
+                val cierreLocal = CierreLocal(
+                    id = ultimoCierreDto.id,
+                    turnoId = ultimoCierreDto.turnoId,
+                    cerradoEn = cerradoEnMillis,
+                    totalPosberry = ultimoCierreDto.totalPosberry,
+                    nota = ultimoCierreDto.nota,
+                    sincronizado = true,
+                    digitalCargado = ultimoCierreDto.digitalCargado?.toString() ?: "{}",
+                    digitalEditado = ultimoCierreDto.digitalEditado?.toString() ?: "{}",
+                    ventasDigitalesCargadas = ultimoCierreDto.ventasDigitalesCargadas,
+                    ventasDigitales = ultimoCierreDto.ventasDigitales,
+                    totalDigitalCargado = ultimoCierreDto.totalDigitalCargado,
+                    totalDigital = ultimoCierreDto.totalDigital,
+                    diferenciaDigital = ultimoCierreDto.diferenciaDigital,
+                    ventasEfectivo = ultimoCierreDto.ventasEfectivo,
+                    totalVentasEfectivo = ultimoCierreDto.totalVentasEfectivo,
+                    totalRetiros = ultimoCierreDto.totalRetiros,
+                    totalProveedores = ultimoCierreDto.totalProveedores
+                )
+
+                val conteosLocal = Denominaciones.LISTA.map { item ->
+                    val key = item.valor.toString()
+                    val billetes = ultimoCierreDto.billetesCaja[key]?.let {
+                        it.toString().removeSurrounding("\"").toIntOrNull() ?: 0
+                    } ?: 0
+                    val toquitos = ultimoCierreDto.toquitosCajita[key]?.let {
+                        it.toString().removeSurrounding("\"").toIntOrNull() ?: 0
+                    } ?: 0
+                    ConteoLocal(
+                        turnoId = ultimoCierreDto.turnoId,
+                        denominacion = item.valor,
+                        billetesCaja = billetes,
+                        toquitosCajita = toquitos
+                    )
+                }
+
+                dao.insertCierre(cierreLocal)
+                dao.insertConteos(conteosLocal)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -320,12 +348,11 @@ class CajitaRepository(private val context: Context) {
     ): VentaLocal {
         val conteosActuales = dao.getConteos(turnoId).associateBy { it.denominacion }
 
-        // Validar que hay suficientes billetes para dar el vuelto / salida
         for ((denom, cantSalida) in billetesSalida) {
             if (cantSalida <= 0) continue
             val actual = conteosActuales[denom]?.billetesCaja ?: 0
             if (actual < cantSalida) {
-                throw IllegalStateException("No hay suficientes billetes de $ $denom en caja para dar el vuelto/salida (disponibles: $actual, necesarios: $cantSalida)")
+                throw IllegalStateException("No hay suficientes billetes de $ $denom en caja para dar el vuelto/salida")
             }
         }
 
@@ -336,7 +363,6 @@ class CajitaRepository(private val context: Context) {
             "La venta no cuadra: $montoDigital digital + $efectivoEntrada entrada - $efectivoSalida salida != $totalVenta total"
         }
 
-        // Aplicar a caja
         val todasDenoms = Denominaciones.LISTA.map { it.valor }
         for (denom in todasDenoms) {
             val entraron = billetesEntrada[denom] ?: 0
@@ -395,7 +421,6 @@ class CajitaRepository(private val context: Context) {
             "La venta no cuadra con los datos ingresados"
         }
 
-        // Calcular la diferencia neta por denominación
         val todasDenoms = Denominaciones.LISTA.map { it.valor }
         for (denom in todasDenoms) {
             val viejoEfecto = (viejosEntrada[denom] ?: 0) - (viejosSalida[denom] ?: 0)
@@ -437,7 +462,6 @@ class CajitaRepository(private val context: Context) {
         val viejosEntrada = VentaLogic.jsonStringToMap(ventaActual.billetesEntrada)
         val viejosSalida = VentaLogic.jsonStringToMap(ventaActual.billetesSalida)
 
-        // Revertir efecto de la venta original
         val todasDenoms = Denominaciones.LISTA.map { it.valor }
         for (denom in todasDenoms) {
             val viejoEfecto = (viejosEntrada[denom] ?: 0) - (viejosSalida[denom] ?: 0)
@@ -465,29 +489,40 @@ class CajitaRepository(private val context: Context) {
 
     suspend fun guardarNuevoEgreso(
         turnoId: String,
-        tipo: String, // "RETIRO", "PROVEEDOR"
-        origen: String, // "CAJA", "CAJITA"
-        billetes: Map<Int, Int>,
+        tipo: String,
+        origen: String,
+        billetesCaja: Map<Int, Int>,
+        toquitosCajita: Map<Int, Int>,
         proveedor: String?,
         nota: String?
     ): EgresoLocal {
         val conteosActuales = dao.getConteos(turnoId).associateBy { it.denominacion }
 
-        val factorToquito = if (origen == "CAJITA") 10L else 1L
-        val montoTotal = billetes.entries.sumOf { (denom, cant) ->
-            if (cant > 0) cant.toLong() * denom.toLong() * factorToquito else 0L
+        val montoCaja = billetesCaja.entries.sumOf { (denom, cant) ->
+            if (cant > 0) cant.toLong() * denom.toLong() else 0L
         }
+        val montoCajita = toquitosCajita.entries.sumOf { (denom, cant) ->
+            if (cant > 0) cant.toLong() * denom.toLong() * 10L else 0L
+        }
+        val montoTotal = montoCaja + montoCajita
 
         require(montoTotal > 0) { "El monto del egreso debe ser mayor a 0" }
 
-        // Validar fondos disponibles
-        for ((denom, cant) in billetes) {
+        for ((denom, cant) in billetesCaja) {
             if (cant <= 0) continue
             val cActual = conteosActuales[denom]
-            val disp = if (origen == "CAJITA") cActual?.toquitosCajita ?: 0 else cActual?.billetesCaja ?: 0
+            val disp = cActual?.billetesCaja ?: 0
             if (disp < cant) {
-                val unidad = if (origen == "CAJITA") "toquitos" else "billetes"
-                throw IllegalStateException("No hay suficientes $unidad de $ $denom (disponibles: $disp, solicitados: $cant)")
+                throw IllegalStateException("No hay suficientes billetes de $ $denom en caja")
+            }
+        }
+
+        for ((denom, cant) in toquitosCajita) {
+            if (cant <= 0) continue
+            val cActual = conteosActuales[denom]
+            val disp = cActual?.toquitosCajita ?: 0
+            if (disp < cant) {
+                throw IllegalStateException("No hay suficientes toquitos de $ $denom en cajita")
             }
         }
 
@@ -495,16 +530,24 @@ class CajitaRepository(private val context: Context) {
             dao.insertProveedor(ProveedorLocal(nombre = proveedor.trim()))
         }
 
-        // Descontar
-        for ((denom, cant) in billetes) {
-            if (cant <= 0) continue
-            val cActual = conteosActuales[denom] ?: ConteoLocal(turnoId = turnoId, denominacion = denom, billetesCaja = 0, toquitosCajita = 0)
-            val nuevoConteo = if (origen == "CAJITA") {
-                cActual.copy(toquitosCajita = (cActual.toquitosCajita - cant).coerceAtLeast(0))
-            } else {
-                cActual.copy(billetesCaja = (cActual.billetesCaja - cant).coerceAtLeast(0))
+        val todasDenoms = Denominaciones.LISTA.map { it.valor }
+        for (denom in todasDenoms) {
+            val cantCaja = billetesCaja[denom] ?: 0
+            val cantCajita = toquitosCajita[denom] ?: 0
+            if (cantCaja > 0 || cantCajita > 0) {
+                val cActual = conteosActuales[denom] ?: ConteoLocal(turnoId = turnoId, denominacion = denom, billetesCaja = 0, toquitosCajita = 0)
+                val nuevoConteo = cActual.copy(
+                    billetesCaja = (cActual.billetesCaja - cantCaja).coerceAtLeast(0),
+                    toquitosCajita = (cActual.toquitosCajita - cantCajita).coerceAtLeast(0)
+                )
+                dao.insertOrUpdateConteo(nuevoConteo)
             }
-            dao.insertOrUpdateConteo(nuevoConteo)
+        }
+
+        val origenReal = when {
+            billetesCaja.any { it.value > 0 } && toquitosCajita.any { it.value > 0 } -> "MIXTO"
+            toquitosCajita.any { it.value > 0 } -> "CAJITA"
+            else -> "CAJA"
         }
 
         val egresoId = UUID.randomUUID().toString()
@@ -518,9 +561,9 @@ class CajitaRepository(private val context: Context) {
             ocurridoEn = ahora,
             registradoEn = ahora,
             tipo = tipo,
-            origen = origen,
+            origen = origenReal,
             monto = montoTotal,
-            billetes = VentaLogic.mapToJsonString(billetes),
+            billetes = VentaLogic.mapEgresoToJsonString(billetesCaja, toquitosCajita),
             proveedor = proveedor?.ifBlank { null },
             nota = nota?.ifBlank { null },
             sincronizado = false
@@ -535,38 +578,36 @@ class CajitaRepository(private val context: Context) {
         egresoActual: EgresoLocal,
         nuevoTipo: String,
         nuevoOrigen: String,
-        nuevosBilletes: Map<Int, Int>,
+        nuevosBilletesCaja: Map<Int, Int>,
+        nuevosToquitosCajita: Map<Int, Int>,
         nuevoProveedor: String?,
         nuevaNota: String?
     ): EgresoLocal {
         val conteosActuales = dao.getConteos(egresoActual.turnoId).associateBy { it.denominacion }
-        val viejosBilletes = VentaLogic.jsonStringToMap(egresoActual.billetes)
+        val (viejosCaja, viejosCajita) = VentaLogic.parseEgresoJsonString(egresoActual.billetes, egresoActual.origen)
 
-        val factorToquito = if (nuevoOrigen == "CAJITA") 10L else 1L
-        val nuevoMontoTotal = nuevosBilletes.entries.sumOf { (denom, cant) ->
-            if (cant > 0) cant.toLong() * denom.toLong() * factorToquito else 0L
+        val montoCaja = nuevosBilletesCaja.entries.sumOf { (denom, cant) ->
+            if (cant > 0) cant.toLong() * denom.toLong() else 0L
         }
+        val montoCajita = nuevosToquitosCajita.entries.sumOf { (denom, cant) ->
+            if (cant > 0) cant.toLong() * denom.toLong() * 10L else 0L
+        }
+        val nuevoMontoTotal = montoCaja + montoCajita
 
         require(nuevoMontoTotal > 0) { "El monto del egreso debe ser mayor a 0" }
 
-        // Si cambió el origen o billetes, revertir viejo y aplicar nuevo
         val todasDenoms = Denominaciones.LISTA.map { it.valor }
         for (denom in todasDenoms) {
             val cActual = conteosActuales[denom] ?: ConteoLocal(turnoId = egresoActual.turnoId, denominacion = denom, billetesCaja = 0, toquitosCajita = 0)
 
-            // Revertir viejo
-            val vCant = viejosBilletes[denom] ?: 0
-            var bCaja = cActual.billetesCaja
-            var tCajita = cActual.toquitosCajita
-            if (vCant > 0) {
-                if (egresoActual.origen == "CAJITA") tCajita += vCant else bCaja += vCant
-            }
+            val vCaja = viejosCaja[denom] ?: 0
+            val vCajita = viejosCajita[denom] ?: 0
 
-            // Aplicar nuevo
-            val nCant = nuevosBilletes[denom] ?: 0
-            if (nCant > 0) {
-                if (nuevoOrigen == "CAJITA") tCajita -= nCant else bCaja -= nCant
-            }
+            val nCaja = nuevosBilletesCaja[denom] ?: 0
+            val nCajita = nuevosToquitosCajita[denom] ?: 0
+
+            val bCaja = cActual.billetesCaja + vCaja - nCaja
+            val tCajita = cActual.toquitosCajita + vCajita - nCajita
 
             if (bCaja < 0 || tCajita < 0) {
                 throw IllegalStateException("No hay suficientes billetes/toquitos para aplicar la edición")
@@ -579,14 +620,20 @@ class CajitaRepository(private val context: Context) {
             dao.insertProveedor(ProveedorLocal(nombre = nuevoProveedor.trim()))
         }
 
+        val origenReal = when {
+            nuevosBilletesCaja.any { it.value > 0 } && nuevosToquitosCajita.any { it.value > 0 } -> "MIXTO"
+            nuevosToquitosCajita.any { it.value > 0 } -> "CAJITA"
+            else -> "CAJA"
+        }
+
         val nuevaVersion = egresoActual.copy(
             id = UUID.randomUUID().toString(),
             version = egresoActual.version + 1,
             registradoEn = System.currentTimeMillis(),
             tipo = nuevoTipo,
-            origen = nuevoOrigen,
+            origen = origenReal,
             monto = nuevoMontoTotal,
-            billetes = VentaLogic.mapToJsonString(nuevosBilletes),
+            billetes = VentaLogic.mapEgresoToJsonString(nuevosBilletesCaja, nuevosToquitosCajita),
             proveedor = nuevoProveedor?.ifBlank { null },
             nota = nuevaNota?.ifBlank { null },
             sincronizado = false
@@ -599,17 +646,20 @@ class CajitaRepository(private val context: Context) {
 
     suspend fun borrarEgreso(egresoActual: EgresoLocal): EgresoLocal {
         val conteosActuales = dao.getConteos(egresoActual.turnoId).associateBy { it.denominacion }
-        val viejosBilletes = VentaLogic.jsonStringToMap(egresoActual.billetes)
+        val (viejosCaja, viejosCajita) = VentaLogic.parseEgresoJsonString(egresoActual.billetes, egresoActual.origen)
 
-        for ((denom, cant) in viejosBilletes) {
-            if (cant <= 0) continue
-            val cActual = conteosActuales[denom] ?: ConteoLocal(turnoId = egresoActual.turnoId, denominacion = denom, billetesCaja = 0, toquitosCajita = 0)
-            val nuevoConteo = if (egresoActual.origen == "CAJITA") {
-                cActual.copy(toquitosCajita = cActual.toquitosCajita + cant)
-            } else {
-                cActual.copy(billetesCaja = cActual.billetesCaja + cant)
+        val todasDenoms = Denominaciones.LISTA.map { it.valor }
+        for (denom in todasDenoms) {
+            val vCaja = viejosCaja[denom] ?: 0
+            val vCajita = viejosCajita[denom] ?: 0
+            if (vCaja > 0 || vCajita > 0) {
+                val cActual = conteosActuales[denom] ?: ConteoLocal(turnoId = egresoActual.turnoId, denominacion = denom, billetesCaja = 0, toquitosCajita = 0)
+                val nuevoConteo = cActual.copy(
+                    billetesCaja = cActual.billetesCaja + vCaja,
+                    toquitosCajita = cActual.toquitosCajita + vCajita
+                )
+                dao.insertOrUpdateConteo(nuevoConteo)
             }
-            dao.insertOrUpdateConteo(nuevoConteo)
         }
 
         val egresoEliminado = egresoActual.copy(
@@ -673,5 +723,13 @@ class CajitaRepository(private val context: Context) {
 
     fun triggerSync() {
         SyncWorker.enqueue(context)
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val dispositivoId = getOrCreateDispositivoId()
+                Sincronizador.ejecutarSincronizacion(context, dao, supabaseService, dispositivoId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 }

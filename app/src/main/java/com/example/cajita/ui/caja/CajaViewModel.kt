@@ -168,7 +168,8 @@ class CajaViewModel(application: Application) : AndroidViewModel(application) {
     fun guardarNuevoEgreso(
         tipo: String,
         origen: String,
-        billetes: Map<Int, Int>,
+        billetesCaja: Map<Int, Int>,
+        toquitosCajita: Map<Int, Int>,
         proveedor: String?,
         nota: String?
     ) {
@@ -179,7 +180,8 @@ class CajaViewModel(application: Application) : AndroidViewModel(application) {
                     turnoId = turnoId,
                     tipo = tipo,
                     origen = origen,
-                    billetes = billetes,
+                    billetesCaja = billetesCaja,
+                    toquitosCajita = toquitosCajita,
                     proveedor = proveedor,
                     nota = nota
                 )
@@ -241,20 +243,4 @@ class CajaViewModel(application: Application) : AndroidViewModel(application) {
     fun calcularTotalToquitosCount(): Int {
         return conteos.value.sumOf { it.toquitosCajita }
     }
-
-    fun calcularResumenDigitales(): Quadruple<Int, Long, Map<String, Pair<Int, Long>>, Long> {
-        val digitales = ventasActivas.value.filter { it.medio != MedioPago.EFECTIVO }
-        val count = digitales.size
-        val totalMonto = digitales.sumOf { it.montoDigital }
-
-        val breakdown = mutableMapOf<String, Pair<Int, Long>>()
-        listOf(MedioPago.DEBITO, MedioPago.QR_TRANSFERENCIA, MedioPago.CREDITO).forEach { m ->
-            val mList = digitales.filter { it.medio == m }
-            breakdown[m] = Pair(mList.size, mList.sumOf { it.montoDigital })
-        }
-
-        return Quadruple(count, totalMonto, breakdown, totalMonto)
-    }
 }
-
-data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)

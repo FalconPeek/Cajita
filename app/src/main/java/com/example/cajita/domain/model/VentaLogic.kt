@@ -50,7 +50,6 @@ object VentaLogic {
     ): Map<Int, Int>? {
         if (vueltoRequerido <= 0) return emptyMap()
 
-        // Billetes disponibles combinados
         val disponibles = mutableMapOf<Int, Int>()
         Denominaciones.LISTA.forEach { item ->
             val enCaja = cajaBilletes[item.valor] ?: 0
@@ -61,7 +60,6 @@ object VentaLogic {
         var restante = vueltoRequerido
         val resultado = mutableMapOf<Int, Int>()
 
-        // Denominaciones ordenadas de mayor a menor
         val denoms = Denominaciones.LISTA.map { it.valor }.sortedDescending()
 
         for (denom in denoms) {
@@ -103,5 +101,58 @@ object VentaLogic {
         } catch (_: Exception) {
             emptyMap()
         }
+    }
+
+    fun mapEgresoToJsonString(
+        billetesCaja: Map<Int, Int>,
+        toquitosCajita: Map<Int, Int>
+    ): String {
+        val cajaFiltrado = billetesCaja.filter { it.value > 0 }
+        val cajitaFiltrado = toquitosCajita.filter { it.value > 0 }
+
+        if (cajitaFiltrado.isEmpty()) {
+            return mapToJsonString(cajaFiltrado)
+        }
+        if (cajaFiltrado.isEmpty()) {
+            return mapToJsonString(cajitaFiltrado)
+        }
+
+        val cajaJson = JsonObject(cajaFiltrado.mapKeys { it.key.toString() }.mapValues { JsonPrimitive(it.value) })
+        val cajitaJson = JsonObject(cajitaFiltrado.mapKeys { it.key.toString() }.mapValues { JsonPrimitive(it.value) })
+
+        return JsonObject(mapOf("caja" to cajaJson, "cajita" to cajitaJson)).toString()
+    }
+
+    fun parseEgresoJsonString(jsonStr: String, origenDefault: String = "CAJA"): Pair<Map<Int, Int>, Map<Int, Int>> {
+        if (jsonStr.isBlank() || jsonStr == "{}") return Pair(emptyMap(), emptyMap())
+        return try {
+            val element = Json.parseToJsonElement(jsonStr)
+            if (element is JsonObject) {
+                if (element.containsKey("caja") || element.containsKey("cajita")) {
+                    val cajaMap = element["caja"]?.let { jsonToMap(it as JsonObject) } ?: emptyMap()
+                    val cajitaMap = element["cajita"]?.let { jsonToMap(it as JsonObject) } ?: emptyMap()
+                    Pair(cajaMap, cajitaMap)
+                } else {
+                    val map = jsonToMap(element)
+                    if (origenDefault == "CAJITA") Pair(emptyMap(), map) else Pair(map, emptyMap())
+                }
+            } else {
+                Pair(emptyMap(), emptyMap())
+            }
+        } catch (_: Exception) {
+            Pair(emptyMap(), emptyMap())
+        }
+    }
+
+    private fun jsonToMap(jsonObject: JsonObject): Map<Int, Int> {
+        val result = mutableMapOf<Int, Int>()
+        jsonObject.forEach { (key, value) ->
+            val denom = key.toIntOrNull()
+            val cant = value.jsonPrimitive.intOrNull
+            if (denom != null && cant != null && cant > 0) {
+                result[denom] = cant
+            }
+        }
+        return result
     }
 }
